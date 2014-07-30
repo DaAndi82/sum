@@ -164,7 +164,13 @@ define('sum-backend-userlist', Class.extend({
         var checkAllHandledThenExecuteRefreshUserlist = function() {
             toMerge--;
             if(toMerge===0)
-                that.userlistRefreshFrontend(users);
+                if (that.userlistsHasChanges(that.backend.userlist, users)) {
+                    that.userlistRefreshFrontend(users);
+                } else {
+                    window.setTimeout(function() {
+                        that.userlistUpdateTimer();
+                    }, config.user_list_update_intervall);
+                }
         };
 
         // loads current userinfos for a single user
@@ -247,5 +253,28 @@ define('sum-backend-userlist', Class.extend({
         window.setTimeout(function() {
             that.userlistUpdateTimer();
         }, config.user_list_update_intervall);
+    },
+
+
+    userlistsHasChanges: function (oldUserlist, newUserlist) {
+
+        if (oldUserlist.size != newUserlist.size)
+            return true;
+
+        var hasChanges = false;
+
+        $.each(newUserlist, function (index, newUser) {
+            if ($.grep(oldUserlist, function (oldUser) {
+                    return (oldUser.username == newUser.username
+                        && oldUser.status == newUser.status
+                        && $(oldUser.rooms).not(newUser.rooms) == 0
+                        && $(newUser.rooms).not(oldUser.rooms) == 0)
+                }).length == 0) {
+                hasChanges = true;
+                return false;
+            }
+        });
+
+        return hasChanges;
     }
 }));
