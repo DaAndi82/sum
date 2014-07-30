@@ -258,7 +258,7 @@ define('sum-backend-userlist', Class.extend({
 
     userlistsHasChanges: function (oldUserlist, newUserlist) {
 
-        if (oldUserlist.size != newUserlist.size)
+        if (oldUserlist.length != newUserlist.length)
             return true;
 
         var hasChanges = false;
