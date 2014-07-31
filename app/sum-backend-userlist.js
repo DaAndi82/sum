@@ -39,6 +39,12 @@ define('sum-backend-userlist', Class.extend({
 
 
     /**
+     * count userfile update error
+     */
+    userfileError: 0,
+
+
+    /**
      * write extended userfile with avatar, ip, chatport and other less frequently updated information
      * @param ip (string) current ip address
      * @param port (int) current port
@@ -46,7 +52,7 @@ define('sum-backend-userlist', Class.extend({
      * @param avatar (string) current avatar
      * @param success (callback) will be executed after successfully writing file
      */
-    userlistUpdateUsersOwnFile: function(ip, port, key, avatar, success) {
+    userlistUpdateUsersOwnFile: function(ip, port, key, avatar, version, success) {
         var file = config.user_file_extended.replace(/\?/, CryptoJS.MD5(this.backendHelpers.getUsername()));
         var that = this;
         this.backendHelpers.writeJsonFile(
@@ -55,14 +61,15 @@ define('sum-backend-userlist', Class.extend({
                 ip: ip,
                 port: port,
                 key: key.getPublicPEM(),
-                avatar: avatar
+                avatar: avatar,
+                version: version
             },
             function() {
                 that.userfileTimestamp = new Date().getTime();
                 if (typeof success != 'undefined')
                     success();
             },
-            that.error
+            that.backend.error
         );
 
     },
@@ -95,58 +102,89 @@ define('sum-backend-userlist', Class.extend({
      */
     userlistUpdater: function() {
         var that = this;
-        that.backendHelpers.readJsonFile(config.user_file, function(users) {
-            var currentuser = that.backendHelpers.getUsername();
-            var now = new Date().getTime();
-
-            // remove orphaned user entries
-            var userlist = [];
-            for(var i=0; i<users.length; i++) {
-                // ignore entries without username and timestamp
-                if (typeof users[i].username == 'undefined' || typeof users[i].timestamp == 'undefined')
-                    continue;
-
-                // current user will be added later
-                if (users[i].username == currentuser)
-                    continue;
-
-                // only save active users
-                if (users[i].timestamp + config.user_remove > now) {
-                    // if user has a timeout, set status to offline
-                    if (users[i].status == 'online' && users[i].timestamp + config.user_timeout < now) {
-                        users[i].status = 'offline';
-                    }
-
-                    userlist[userlist.length] = users[i];
-                } else {
-                    if (typeof that.userIsRemoved != 'undefined')
-                        that.userIsRemoved(users[i]);
+        that.backendHelpers.readJsonFile(
+            config.user_file,
+            function(users) {
+                that.userlistUpdate(users);
+            },
+            function(err) {
+                // userfile does not exist? create new one
+                if (typeof err != 'undefined' && typeof err.code != 'undefined') {
+                    that.userlistUpdate([]);
+                    return;
                 }
+
+                // more than 5 retries failed
+                if (that.userfileError > 5)
+                    that.backend.error('Zugriff auf die Userliste nicht möglich');
+                else
+                    that.userfileError++;
+
+                // start next run
+                window.setTimeout(function() {
+                    that.userlistUpdateTimer();
+                }, config.user_list_update_intervall);
             }
+        );
+    },
 
-            // add current user
-            userlist[userlist.length] = {
-                username: currentuser,
-                timestamp: now,
-                status: 'online',
-                userfileTimestamp: that.userfileTimestamp,
-                rooms: that.backend.roomlist
-            };
 
-            // write back updated userfile
-            that.backendHelpers.writeJsonFile(
-                config.user_file,
-                userlist,
-                function() {
-                    // release lock
-                    that.backendHelpers.unlock();
-                },
-                that.error
-            );
+    /**
+     * updates userlist
+     * @param users list of users
+     */
+    userlistUpdate: function(users) {
+        // reset error counter
+        this.userfileError = 0;
 
-            // load additional userinfos and update local userlist
-            that.userlistLoadAdditionalUserinfos(userlist);
-        });
+        var currentuser = this.backendHelpers.getUsername();
+        var now = new Date().getTime();
+
+        // remove orphaned user entries
+        var userlist = [];
+        for(var i=0; i<users.length; i++) {
+            // ignore entries without username and timestamp
+            if (typeof users[i].username == 'undefined' || typeof users[i].timestamp == 'undefined')
+                continue;
+
+            // current user will be added later
+            if (users[i].username == currentuser)
+                continue;
+
+            // only save active users
+            if (users[i].timestamp + config.user_remove > now) {
+                // if user has a timeout, set status to offline
+                if (users[i].status == 'online' && users[i].timestamp + config.user_timeout < now) {
+                    users[i].status = 'offline';
+                }
+
+                userlist[userlist.length] = users[i];
+            }
+        }
+
+        // add current user
+        userlist[userlist.length] = {
+            username: currentuser,
+            timestamp: now,
+            status: 'online',
+            userfileTimestamp: this.userfileTimestamp,
+            rooms: this.backend.roomlist
+        };
+
+        // write back updated userfile
+        var that = this;
+        this.backendHelpers.writeJsonFile(
+            config.user_file,
+            userlist,
+            function() {
+                // release lock
+                that.backendHelpers.unlock();
+            },
+            this.backend.error
+        );
+
+        // load additional userinfos and update local userlist
+        this.userlistLoadAdditionalUserinfos(userlist);
     },
 
 
@@ -217,6 +255,9 @@ define('sum-backend-userlist', Class.extend({
      * @param users (array) fetched users
      */
     userlistRefreshFrontend: function(users) {
+        // fix corrupt userlist
+        users = this.compensateCorruptUserlist(users);
+
         // sort userlist by username
         users = this.backendHelpers.sortUserlistByUsername(users);
 
@@ -256,25 +297,81 @@ define('sum-backend-userlist', Class.extend({
     },
 
 
+
     userlistsHasChanges: function (oldUserlist, newUserlist) {
 
+        // different userlist.length -> change
         if (oldUserlist.length != newUserlist.length)
             return true;
 
         var hasChanges = false;
 
-        $.each(newUserlist, function (index, newUser) {
+        $.each(newUserlist, function (userIndex, newUser) {
             if ($.grep(oldUserlist, function (oldUser) {
-                    return (oldUser.username == newUser.username
-                        && oldUser.status == newUser.status
-                        && $(oldUser.rooms).not(newUser.rooms) == 0
-                        && $(newUser.rooms).not(oldUser.rooms) == 0)
-                }).length == 0) {
+                if (oldUser.username != newUser.username)
+                    return false;
+                if (oldUser.status != newUser.status)
+                    return false;
+                if (oldUser.rooms.length != newUser.rooms.length)
+                    return false;
+
+                var sameRoomList = true;
+
+                $.each(newUser.rooms, function (roomIndex, newRoom) {
+                    if ($.grep(oldUser.rooms, function (oldRoom) {
+                        var sameRoom = false;
+
+                        if (oldRoom.name == newRoom.name)
+                            sameRoom = true;
+
+                        return sameRoom;
+                    }).length == 0){
+                        sameRoomList = false;
+                        return false;
+                    }
+                })
+
+                return sameRoomList;
+            }).length == 0) {
                 hasChanges = true;
                 return false;
             }
         });
 
         return hasChanges;
+    },
+    
+
+    /**
+     * Compensates corrupt or wrong userfile. If a user is in local userlist and not in userlist.json
+     * and user is not timedout for removing from list, the user will be restored in the userlist.
+     * @param users userlist
+     * @returns (array) userlist with restored users
+     */
+    compensateCorruptUserlist: function(users) {
+        // search in old userlist
+        $.each(this.backend.userlist, function(index, oldUser) {
+            var found = false;
+
+            // search oldUser in new userlist
+            $.each(users, function(index, user) {
+                if(oldUser.username == user.username) {
+                    found = true;
+                    return false;
+                }
+                return true;
+            });
+
+            // if user is not in new userlist and not timedout: restore it
+            var now = new Date().getTime();
+            if (found === false && oldUser.timestamp + config.user_remove > now) {
+                users[users.length] = oldUser;
+            }
+
+            return true;
+        });
+
+        return users;
+
     }
 }));
