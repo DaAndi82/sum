@@ -21,17 +21,22 @@ module.exports = function(grunt) {
         jasmine : {
             src: [
                 'test/init-mocks.js',
-                'app/injector.js',
-                'app/string-escape.js',
-                'app/config.js',
+                'app/lang/en.js',
+                'app/libs/injector.js',
+                'app/libs/string-escape.js',
                 'app/sum-backend-client.js',
                 'app/sum-backend-helpers.js',
                 'app/sum-backend-server.js',
-                'app/sum-backend-userlist.js',
+                'app/sum-backend-userlist-file.js',
+                'app/sum-backend-userlist-web.js',
+                'app/sum-backend-storage.js',
+                'app/sum-backend-crypto.js',
+                'app/sum-backend-filesystem.js',
                 'app/sum-backend.js',
                 'app/sum-emoticons.js',
                 'app/sum-frontend-events.js',
                 'app/sum-frontend-helpers.js',
+                'app/sum-frontend-command.js',
                 'app/sum-frontend.js'
             ],
             options: {
@@ -43,8 +48,7 @@ module.exports = function(grunt) {
                     'app/libs/jquery-custom-content-scroller/jquery.mCustomScrollbar.min.js', 
                     'app/libs/alertify/alertify.min.js', 
                     'app/libs/jcrop/jquery.Jcrop.min.js', 
-                    'app/libs/selectize/selectize.js', 
-                    'app/libs/crypto-js/md5.js', 
+                    'app/libs/selectize/selectize.js',
                     'app/libs/highlight/highlight.pack.js', 
                     'app/libs/jquery.waitforimages/jquery.waitforimages.js'
                 ]
@@ -52,12 +56,16 @@ module.exports = function(grunt) {
             coverage: {
                 src: [
                     'test/init-mocks.js',
-                    'app/injector.js',
-                    'app/string-escape.js',
+                    'app/lang/en.js',
+                    'app/libs/injector.js',
+                    'app/libs/string-escape.js',
                     'app/sum-backend-client.js',
                     'app/sum-backend-helpers.js',
                     'app/sum-backend-server.js',
                     'app/sum-backend-userlist.js',
+                    'app/sum-backend-storage.js',
+                    'app/sum-backend-crypto.js',
+                    'app/sum-backend-filesystem.js',
                     'app/sum-backend.js',
                     'app/sum-emoticons.js',
                     'app/sum-frontend-events.js',
@@ -82,14 +90,45 @@ module.exports = function(grunt) {
         
         /* build node webkit sum package */
         nodewebkit: {
-            options: {
-                build_dir: './bin',
-                mac: false,
-                win: true,
-                linux32: false,
-                linux64: false
+            withconfig: {
+                options: {
+                    build_dir: './bin',
+                    mac: false,
+                    win: true,
+                    linux32: false,
+                    linux64: false
+                },
+                src: ['./app/**', 
+                      './gamez/**', 
+                      './package.json', 
+                      './config.ini', 
+                      './node_modules/ini/**', 
+                      './node_modules/lockfile/**', 
+                      './node_modules/node-rsa/**', 
+                      './node_modules/base64-stream/**',
+                      './node_modules/request/**',
+                      './node_modules/crypto-js/**'
+                ]
             },
-            src: ['./app/**', './package.json', './config.ini', './node_modules/ini/**', './node_modules/lockfile/**', './node_modules/node-rsa/**']
+            withoutconfig: {
+                options: {
+                    build_dir: './bin',
+                    mac: false,
+                    win: true,
+                    linux32: false,
+                    linux64: false
+                },
+                src: ['./app/**', 
+                      './gamez/**', 
+                      './package.json',
+                      './node_modules/ini/**', 
+                      './node_modules/lockfile/**', 
+                      './node_modules/node-rsa/**', 
+                      './node_modules/base64-stream/**',
+                      './node_modules/request/**',
+                      './node_modules/crypto-js/**'
+                ]
+            }
         },
 
         /* create setup file with inno setup */
@@ -113,6 +152,20 @@ module.exports = function(grunt) {
                     to: ("" + grunt.option('newversion'))
                 }]
             }
+        },
+        
+        /* create zip */
+        compress: {
+            main: {
+                options: {
+                    archive: 'bin/sum-<%= pkg.version %>.zip'
+                },
+                files: [
+                    { expand: true, cwd: 'bin/SUM/win/', src: ['**'], dest: '/', filter: 'isFile'},
+                    { src: ['backend.php'], dest: '' },
+                    { src: ['README.md'], dest: '' }
+                ]
+            }
         }
     });
 
@@ -121,6 +174,7 @@ module.exports = function(grunt) {
     grunt.loadNpmTasks('grunt-shell');
     grunt.loadNpmTasks('grunt-contrib-jasmine');
     grunt.loadNpmTasks('grunt-text-replace');
+    grunt.loadNpmTasks('grunt-contrib-compress');
 
     /* task checks whether newversion is given and start replacement in files if correct format is given */
     grunt.registerTask('versionupdater', 'version update task', function() {
@@ -133,8 +187,12 @@ module.exports = function(grunt) {
         }
     });
 
-    grunt.registerTask('default', ['versionupdater', 'jasmine', 'jshint', 'nodewebkit', 'shell']);
-    grunt.registerTask('check', ['jasmine', 'jshint']);
+    grunt.registerTask('default', ['versionupdater', 'jshint', 'jasmine', 'nodewebkit:withconfig', 'shell']);
+    grunt.registerTask('check',   ['jshint', 'jasmine']);
     grunt.registerTask('version', ['versionupdater']);
+    grunt.registerTask('build',   ['nodewebkit:withconfig']);
+    grunt.registerTask('setup',   ['shell']);
+    grunt.registerTask('zip',     ['compress']);
+    grunt.registerTask('public',  ['nodewebkit:withoutconfig', 'compress']);
 
 };

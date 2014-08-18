@@ -43,19 +43,17 @@ define('sum-frontend', Class.extend({
 
 
     /**
-     * window height before last resize event
-     */
-    lastWindowHeight: $(window).height(),
-
-
-    /**
      * initialize frontend
      */
     initialize: function() {
-        // ser version
+        // hide/show login
+        if (this.backend.showLogin() === false)
+            $('body').addClass('loggedin');
+        
+        // set version
         $('title').html($('title').html() + ' ' + this.backend.version);
         $('.version').html(this.backend.version);
-
+        
         // set currentConversation
         this.currentConversation = config.room_all;
 
@@ -87,11 +85,17 @@ define('sum-frontend', Class.extend({
         // initialize backend callbacks
         this.initBackendCallbacks();
 
-        // Userliste und Rooms updaten
+        // update userlist and rooms
         this.backend.updateUserlist(this.currentConversation);
         this.backend.updateRoomlist();
         this.backend.getConversation(this.currentConversation);
-
+        
+        // update public keys
+        this.updatePublicKeyList(this.backend.getPublicKeys());
+        
+        // initialize timer for unread messages
+        this.initNotificationReminder();
+        
         // check whether new version is available
         this.checkVersion();
     },
@@ -110,30 +114,30 @@ define('sum-frontend', Class.extend({
 
         // new room invite
         this.backend.onRoomInvite(function(room, user) {
-            var text = user.escape() + ' hat dich in den Raum ' + room.escape() + ' eingeladen';
+            var text = lang.frontend_room_invite.replace(/\%s1/, user.escape()).replace(/\%s2/, room.escape());
             alertify.log(text);
             that.backend.notification("group.png", "", text);
         });
 
         // user is now online
         this.backend.onUserOnlineNotice(function(avatar, text) {
-            text = text.escape() + ' ist jetzt online';
+            text = lang.frontend_online.replace(/\%s/, text.escape());
             alertify.log(text);
-            that.backend.notification(typeof avatar != "undefined" ? avatar : "favicon.png", "", text);
+            that.backend.notification(typeof avatar != "undefined" ? avatar : "avatar.png", text);
         });
 
         // register callback for a user goes offline
         this.backend.onUserOfflineNotice(function(avatar, text) {
-            text = text.escape() + ' ist jetzt offline';
+            text = lang.frontend_offline.replace(/\%s/, text.escape());
             alertify.log(text);
-            that.backend.notification(typeof avatar != "undefined" ? avatar : "favicon.png", "", text);
+            that.backend.notification(typeof avatar != "undefined" ? avatar : "avatar.png", text);
         });
 
         // register callback for a user has been removed
         this.backend.onUserRemovedNotice(function(avatar, text) {
-            text = text.escape() + ' verlaesst uns';
+            text = lang.frontend_leave.replace(/\%s/, text.escape());
             alertify.log(text);
-            that.backend.notification(typeof avatar != "undefined" ? avatar : "favicon.png", text);
+            that.backend.notification(typeof avatar != "undefined" ? avatar : "avatar.png", text);
         });
 
         // register callback for incoming new message
@@ -145,8 +149,8 @@ define('sum-frontend', Class.extend({
             if (that.backend.doesRoomExists(message.receiver))
                 conversationId = message.receiver;
         
-            if (message.sender != that.backend.getUsername())
-                that.backend.notification(that.backend.getAvatar(message.sender), "Neue Nachricht von " + message.sender.escape(), message.text, conversationId);
+            // show system tray notification
+            that.backend.notification(that.backend.getAvatar(message.sender), lang.frontend_new_message + message.sender.escape(), message.text, conversationId);
 
             if(that.currentConversation == conversationId)
                 that.backend.getConversation(that.currentConversation);
@@ -155,6 +159,8 @@ define('sum-frontend', Class.extend({
                     that.unreadMessagesCounter[conversationId] = 0;
                 }
                 that.unreadMessagesCounter[conversationId]++;
+                var unread = that.frontendHelpers.countAllUnreadMessages(that.unreadMessagesCounter);
+                that.backend.setBadge(unread);
                 that.backend.updateUserlist(that.currentConversation);
                 that.backend.updateRoomlist();
             }
@@ -193,13 +199,23 @@ define('sum-frontend', Class.extend({
             }
         });
         
-        //switchConversation to user or room
+        // switchConversation to user or room
         this.backend.onSwitchConversation(function(conversationName) {
             if  (that.currentConversation != conversationName) {
                 that.currentConversation = conversationName;
                 that.backend.getConversation(that.currentConversation);
                 that.backend.updateUserlist(that.currentConversation);
             }
+        });
+        
+        // rerender changed messages
+        this.backend.onRerenderMessage(function(message) {
+            var ele = $('#' + message.id);
+            if (ele.length === 0)
+                return;
+            
+            // rerender single message
+            ele.replaceWith(that.frontendMessages.renderMessage(message));
         });
     },
 
@@ -238,6 +254,33 @@ define('sum-frontend', Class.extend({
         });
     },
 
+    
+    /**
+     * starts timer for reminder which opens in fix intervall a notification if a unread message is available
+     */
+    initNotificationReminder: function() {
+        var that = this;
+        setTimeout(function() {
+            var unread = that.frontendHelpers.countAllUnreadMessages(that.unreadMessagesCounter);
+            if(unread>0)
+                that.backend.notification('', lang.frontend_notifications_reminder.replace(/\%s/, unread), '');
+            that.initNotificationReminder();
+        }, config.notification_reminder);
+    },
+    
+    
+    /**
+     * updates list of public keys
+     * @param publicKeys (array) public keys
+     */
+    updatePublicKeyList: function(publicKeys) {
+        var el = $('#key-menue-keys');
+        el.find('option').remove();
+        $.each(publicKeys, function(index, publicKey) {
+            el.append('<option value="' + publicKey.username.escape() + '">' + publicKey.username.escape() + '</option>');
+        });
+    },
+    
 
     /**
      * checks for new sum version
@@ -245,7 +288,7 @@ define('sum-frontend', Class.extend({
     checkVersion: function() {
         this.backend.isNewerVersionAvailable(function(version) {
             $('#newversion').show();
-            $('#newversion').html('SUM Version ' + version.escape() + ' ist verfügbar');
+            $('#newversion').html(lang.frontend_new_version.replace(/\%s/, version.escape()));
             $('#newversion').data('url', config.version_update.replace(/\?/, version.escape()));
         });
         var that = this;
@@ -283,11 +326,18 @@ define('sum-frontend', Class.extend({
             if(that.currentConversation==user.username)
                 active = 'class="active"';
 
+            // invalid key?
+            var invalidkey = '';
+            if (typeof user.invalidkey !== 'undefined' && user.invalidkey)
+                invalidkey = ' <div class="contacts-invalidkey ion-key"></div>';
+            
+                
             // add new entry
             html = html + '<li ' + active + '>' +
                 '<div class="' + user.status + ' contacts-state" ' +
                 'title="' + (typeof user.version != 'undefined' ? user.version : '') + '"></div>' +
                 '<img src="' + avatar + '" class="contacts-avatar avatar" />' +
+                invalidkey +
                 '<div class="contacts-name">' + user.username.escape() + '</div>' + unread + '</li>';
         });
         $('.contacts').html(html);
@@ -346,9 +396,9 @@ define('sum-frontend', Class.extend({
         // show invite dialog
         $.each(invited, function(index, room) {
             var div = $(that.frontendHelpers.createRoomsPopup($('#rooms-add'), "invite"));
-            div.append('<p>Einladung f&uuml;r den Raum ' + room.name + ' von ' + room.invited + ' annehmen?</p>');
+            div.append('<p>' + lang.frontend_invitation.replace(/\%s1/, room.name.escape()).replace(/\%s2/, room.invited.escape()) + '</p>');
             div.append('<input class="name" type="hidden" value="' + room.name.escape() + '" />');
-            div.append('<input class="save" type="button" value="annehmen" /> <input class="cancel" type="button" value="ablehnen" />');
+            div.append('<input class="save" type="button" value="' + lang.frontend_invitation_accept + '" /> <input class="cancel" type="button" value="' + lang.frontend_invitation_decline + '" />');
         });
 
         // restore scroll state
@@ -366,7 +416,11 @@ define('sum-frontend', Class.extend({
         this.backend.updateUserlist(this.currentConversation);
         this.backend.updateRoomlist();
         this.updateConversationHeader();
-
+        
+        // update badge
+        var unread = this.frontendHelpers.countAllUnreadMessages(this.unreadMessagesCounter);
+        this.backend.setBadge(unread > 0 ? unread : "");
+        
         // show messages
         var that = this;
         var onlyAppendNewMessages = false;
@@ -429,9 +483,13 @@ define('sum-frontend', Class.extend({
                 state = 'notavailable';
             }
         }
+        
+        var invalidkey = '';
+        if ($('.contacts .active .contacts-invalidkey').length > 0)
+            invalidkey = '<span class="invalidkey">' + lang.frontend_invalid_key + '</span>';
 
         // write metadata
-        $('#main-metadata').html(avatar + '<span>' + this.currentConversation + '</span><span id="conversationState" class="' + state + '"></span>');
+        $('#main-metadata').html(avatar + '<span>' + this.currentConversation.escape() + '</span><span id="conversationState" class="' + state + '"></span>' + invalidkey);
     },
 
 
@@ -453,5 +511,4 @@ define('sum-frontend', Class.extend({
         $('#conversationState').removeClass();
         $('#conversationState').addClass(state);
     }
-
 }));

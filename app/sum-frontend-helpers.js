@@ -68,11 +68,11 @@ define('sum-frontend-helpers', Class.extend({
         var ageInDays = ageInHours / 24;
 
         if(ageInMinutes<1)
-            return ' vor wenigen Sekunden';
+            return ' ' + lang.frontend_helpers_a_few_seconds_ago;
         if(ageInHours<1)
-            return ageInMinutes < 2 ? 'vor einer Minute' : ('vor ' + Math.floor(ageInMinutes) + ' Minuten');
+            return ageInMinutes < 2 ? lang.frontend_helpers_a_minute_ago : lang.frontend_helpers_n_minutes_ago.replace(/\%s/, Math.floor(ageInMinutes));
         if(ageInDays<1)
-            return ageInHours < 2 ? 'vor einer Stunde' : ('vor ' + Math.floor(ageInHours) + ' Stunden');
+            return ageInHours < 2 ? lang.frontend_helpers_a_hour_ago : lang.frontend_helpers_n_hours_ago.replace(/\%s/, Math.floor(ageInHours));
 
         var dateObj = new Date(date*1000);
         return dateObj.getHours() + ':' + dateObj.getMinutes() + ':' + dateObj.getSeconds();
@@ -186,14 +186,45 @@ define('sum-frontend-helpers', Class.extend({
      * @param element target element
      */
     numberCode: function(element) {
-
         // numbering for pre>code blocks
         $(element).find('pre code').each(function(){
             var lines = $(this).text().split(/\r\n|\r|\n/).length;
             var $numbering = $('<ul/>').addClass('pre-numbering');
             $(this).addClass('has-numbering').parent().append($numbering);
-            for(i=1;i<=lines;i++)
+            for(var i=1;i<=lines;i++)
                 $numbering.append($('<li/>').text(i));
         });
+    },
+    
+    
+    /**
+     * format file size to human readable size
+     * @return (string) size in readable format e.g. 10 MB
+     * @param bytes (int) filesize
+     */
+    humanFileSize: function(bytes) {
+        var thresh = 1024;
+        if(bytes < thresh) return bytes + ' B';
+        var units = ['kB','MB','GB','TB'];
+        var u = -1;
+        do {
+            bytes /= thresh;
+            ++u;
+        } while(bytes >= thresh);
+        return bytes.toFixed(1) + ' '+units[u];
+    },
+    
+    
+    /**
+     * returns sum of all unread messages in all conversations
+     * @return (int) amount of unread messages
+     * @param conversations (array) conversations array
+     */
+    countAllUnreadMessages: function(conversations) {
+        var sum = 0;
+        $.each(conversations, function(index, item) {
+            sum += item;
+        });
+        return sum;
     }
 }));

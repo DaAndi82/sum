@@ -1,5 +1,5 @@
 #define MyAppName "S Ultimate Messenger"
-#define MyAppVersion "0.6.0-SNAPSHOT"
+#define MyAppVersion "0.9.0-SNAPSHOT"
 #define MyAppPublisher "Tobias Zeising"
 #define MyAppURL "http://www.sum-messenger.org"
 #define LaunchProgram "Starte S Ultimate Messenger nach der Installation"
@@ -25,7 +25,7 @@ OutputBaseFilename=sum-setup-{#MyAppVersion}
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
-Source: "bin/releases/SUM/win/SUM/*"; Excludes: "ffmpegsumo.dll,libEGL.dll,libGLESv2.dll" ; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "bin/SUM/win/*"; Excludes: "ffmpegsumo.dll,libEGL.dll,libGLESv2.dll" ; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "app/favicon.ico"; DestDir: "{app}"; DestName: "icon.ico"; Flags: ignoreversion
 
 [Tasks]

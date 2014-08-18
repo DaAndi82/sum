@@ -13,9 +13,9 @@ define('sum-frontend-events', Class.extend({
 
 
     /**
-     * the current backend helpers
+     * backends command handler
      */
-    backendHelpers: injected('sum-backend-helpers'),
+    frontendCommand: injected('sum-frontend-command'),
 
 
     /**
@@ -35,11 +35,43 @@ define('sum-frontend-events', Class.extend({
      */
     selection: false,
 
-
+    
+    /**
+     * input history
+     */
+    history: [],
+    
+    
+    /**
+     * cursor in history
+     */
+    historyCursor: 0,
+    
+    
+    /**
+     * window height before last resize event
+     */
+    lastWindowHeight: $(window).height(),
+    
+    
     /**
      * initialize events (clicks, ...)
      */
     initialize: function() {
+        this.initGeneral();
+        this.initMenue();
+        this.initKeyMenue();
+        this.initMessages();
+        this.initMessageMenue();
+        this.initMessageInput();
+        this.initNavigation();
+    },
+    
+    
+    /**
+     * initialize general events
+     */
+    initGeneral: function() {
         var that = this;
 
         // initialize window resize handler
@@ -50,7 +82,7 @@ define('sum-frontend-events', Class.extend({
 
         // open external links in new window
         $('body').delegate("a.extern", "click", function(e) {
-            gui.Shell.openExternal($(this).attr('href'));
+            that.backend.openUrl($(this).attr('href'));
             e.preventDefault();
             return false;
         });
@@ -58,9 +90,14 @@ define('sum-frontend-events', Class.extend({
         // close menues when clicking somewhere
         $('body').click(function(event) {
             // no click inside main menue: close it
-            if ($(event.target).parents('#main-menue-dropdown').length===0 && event.target.id != 'main-menue' && event.target.id != 'fileDialog') {
+            if ($(event.target).parents('#main-menue-dropdown').length===0 && event.target.id != 'main-menue') {
                 $('#main-menue-dropdown li').show();
                 $('#main-menue-avatar-croper, #main-menue-dropdown').hide();
+            }
+            
+            // no click inside key menue: close it
+            if ($(event.target).parents('#key-menue-dropdown').length===0 && event.target.id != 'key-menue') {
+                $('#key-menue-dropdown').hide();
             }
 
             // no click inside add menue: close it
@@ -74,20 +111,40 @@ define('sum-frontend-events', Class.extend({
             }
         });
 
+        // update version
+        $('#newversion').click(function() {
+            gui.Shell.openExternal($(this).data('url'));
+        });
+    },
+    
+    
+    /**
+     * initialize top menue events
+     */
+    initMenue: function() {
+        var that = this;
+    
         // menue: toggle
         $('#main-menue').click(function() {
             $('#main-menue-dropdown').toggle();
         });
-
+        
         // menue: select avatar
         $('#main-menue-avatar').click(function() {
             that.selectAvatar();
+        });
+        
+        // menue: removeAvatar avatar
+        $('#main-menue-remove-avatar').click(function() {
+            that.backend.removeAvatar();
+            alertify.log(lang.frontend_events_avatar_removed);
+            $('#main-menue-dropdown').toggle();
         });
 
         // menue: save avatar
         $('#main-menue-avatar-croper .save').click(function() {
             if (that.selection===false) {
-                alertify.error('Bitte einen sichtbaren Bereich w&auml;hlen');
+                alertify.error(lang.frontend_events_save_avatar_no_selection);
                 return;
             }
             $('#main-menue-dropdown li').show();
@@ -131,7 +188,7 @@ define('sum-frontend-events', Class.extend({
 
         // menue: about
         $('#main-menue-about').click(function() {
-            gui.Shell.openExternal('http://www.sum-messenger.org');
+            gui.Shell.openExternal(config.about_url);
             $('#main-menue-dropdown').hide();
         });
 
@@ -139,7 +196,334 @@ define('sum-frontend-events', Class.extend({
         $('#main-close').click(function() {
             that.backend.close();
         });
+    },
+    
+    
+    /**
+     * initialize key menue
+     */
+    initKeyMenue: function() {
+        var that = this;
+        
+        var showMenue = function() {
+            $('#key-menue-dropdown li').hide();
+            if(that.backend.showLogin()===false) {
+                $('#key-menue-enable').show();
+            } else {
+                $('#key-menue-dropdown .menue').show();
+            }
+        };
+        
+        var hideMenue = function() {
+            $('#key-menue-dropdown .menue').hide();
+        };
+        
+        var validateNewPasswords = function(newPassword, newPasswordAgain) {
+            // passwords given
+            if($.trim(newPassword).length === 0 || $.trim(newPasswordAgain).length === 0) {
+                alertify.error(lang.frontend_events_validate_passwords_missing_field);
+                return false;
+            }
+            
+            // new passwords equals?
+            if(newPassword !== newPasswordAgain) {
+                alertify.error(lang.frontend_events_validate_passwords_not_equal_passwords);
+                return false;
+            }
+            return true;
+        };
 
+        // cancel button (all = back to menue)
+        $('#key-menue-dropdown .cancel').click(function() {
+            showMenue();
+        });
+    
+        // key menue: toggle
+        $('#key-menue').click(function() {
+            showMenue();
+            $('#key-menue-dropdown').toggle();
+        });
+        
+        // show enable key management password input
+        $('#key-menue-enable .save').click(function() {
+            $('#key-menue-enable').hide();
+            $('#key-menue-enable-container').show();
+        });
+        
+        // show password input for private key
+        $('#key-menue-password').click(function() {
+            hideMenue();
+            $('#key-menue-password-container').show();
+        });
+        
+        // show manage keys
+        $('#key-menue-manage').click(function() {
+            hideMenue();
+            $('#key-menue-manage-container').show();
+        });
+        
+        // show reset password
+        $('#key-menue-reset').click(function() {
+            hideMenue();
+            $('#key-menue-reset-container').show();
+        });
+        
+        // show share
+        $('#key-menue-share').click(function() {
+            hideMenue();
+            $('#key-menue-share-container').show();
+        });
+        
+        // show export
+        $('#key-menue-export').click(function() {
+            hideMenue();
+            $('#key-menue-export-container').show();
+        });
+        
+        // show import
+        $('#key-menue-import').click(function() {
+            hideMenue();
+            $('#key-menue-import-container').show();
+        });
+        
+        // show disable
+        $('#key-menue-disable').click(function() {
+            hideMenue();
+            $('#key-menue-disable-container').show();
+        });
+        
+        // enable key management: save
+        $('#key-menue-enable-container .save').click(function() {
+            // validate passwords
+            var newPassword = $('#key-menue-enable-container .password').val();
+            var newPasswordAgain = $('#key-menue-enable-container .password-again').val();
+            if (validateNewPasswords(newPassword, newPasswordAgain) === false)
+                return;
+                
+            // save key
+            that.backend.saveKey(newPassword);
+            
+            alertify.log(lang.frontend_events_key_mangement_activated);
+            showMenue();
+        });
+        
+        // manage keys: add new key
+        $('#key-menue-manage-container .save').click(function() {
+            var fileInput = $('<input type="file" />');
+            fileInput.change(function() {
+                // check file given?
+                if ($(this).val() === '')
+                    return;
+
+                // save key
+                that.backend.addPublicKey($(this).val(), function() {
+                    // update public keys
+                    that.frontend.updatePublicKeyList(that.backend.getPublicKeys());
+                });
+            });
+            fileInput.trigger('click');
+        });
+        
+        // manage keys: remove key
+        $('#key-menue-manage-container .remove').click(function() {
+            if ($('#key-menue-keys').val() === '' || $('#key-menue-keys').val() === null)
+                return alertify.error(lang.frontend_events_no_user_selected);
+            
+            // remove key
+            $.each($('#key-menue-keys').val(), function(index, item) {
+                that.backend.removePublicKey(item);
+            });
+            
+            // update public keys
+            that.frontend.updatePublicKeyList(that.backend.getPublicKeys());
+        });
+        
+        // change password: save
+        $('#key-menue-password-container .save').click(function() {
+            // validate passwords
+            var oldPassword = $('#key-menue-password-container .old-password').val();
+            var newPassword = $('#key-menue-password-container .new-password').val();
+            var newPasswordAgain = $('#key-menue-password-container .new-password-again').val();
+            
+            // passwords given
+            if($.trim(oldPassword).length === 0)
+                return alertify.error(lang.frontend_events_validate_passwords_missing_field);
+            
+            // old password correct?
+            if(that.backend.checkKeyPassword(oldPassword) !== true)
+                return alertify.error(lang.frontend_events_invalid_old_password);
+            
+            // validate new passwords
+            if (validateNewPasswords(newPassword, newPasswordAgain) === false)
+                return;
+                
+            // change password
+            that.backend.saveKey(newPassword);
+            
+            showMenue();
+            alertify.log(lang.frontend_events_password_changed);
+        });
+        
+        // reset key
+        $('#key-menue-reset-container .save').click(function() {
+            if(confirm(lang.frontend_events_confirm_app_restart) !== true)
+                return;
+                
+            // validate new passwords
+            var newPassword = $('#key-menue-reset-container .new-password').val();
+            var newPasswordAgain = $('#key-menue-reset-container .new-password-again').val();
+            if (validateNewPasswords(newPassword, newPasswordAgain) === false)
+                return;
+                
+            // reset key
+            that.backend.resetKey(newPassword);
+            
+            // restart application
+            document.location.reload(true);
+        });
+        
+        // export public key
+        $('#key-menue-share-container .save').click(function() {
+            var fileInput = $('<input type="file" />');
+            fileInput.attr('nwsaveas', 'public.key');
+            fileInput.change(function() {
+                // check file given?
+                if ($(this).val() === '')
+                    return;
+
+                // export key
+                that.backend.exportPublicKey($(this).val(), function() {
+                    alertify.log(lang.frontend_events_export_public_key_success);
+                    $('#key-menue-dropdown').toggle();
+                });
+            });
+            fileInput.trigger('click');
+        });
+        
+        // export key
+        $('#key-menue-export-container .save').click(function() {
+            var fileInput = $('<input type="file" />');
+            fileInput.attr('nwsaveas', 'keypair.key');
+            fileInput.change(function() {
+                // check file given?
+                if ($(this).val() === '')
+                    return;
+
+                // export key
+                that.backend.exportKey($(this).val(), function() {
+                    alertify.log(lang.frontend_events_export_key_success);
+                    $('#key-menue-dropdown').toggle();
+                });
+            });
+            fileInput.trigger('click');
+        });
+        
+        // import key
+        $('#key-menue-import-container .save').click(function() {
+            var fileInput = $('<input type="file" />');
+            fileInput.change(function() {
+                // check file given?
+                if ($(this).val() === '')
+                    return;
+
+                if(confirm(lang.frontend_events_confirm_app_restart) !== true)
+                    return;    
+                    
+                // import key
+                that.backend.importKey(
+                    $(this).val(), 
+                    $('#key-menue-import-container .password').val(),
+                    function() {
+                        alertify.log(lang.frontend_events_import_key_success);
+                        
+                        // restart application
+                        document.location.reload(true);
+                    });
+            });
+            fileInput.trigger('click');
+        });
+        
+        // disable key managmement
+        $('#key-menue-disable-container .save').click(function() {
+            if(confirm(lang.frontend_events_confirm_disable) !== true)
+                return;
+            that.backend.removeKey();
+            that.frontend.updatePublicKeyList(that.backend.getPublicKeys());
+            alertify.log(lang.frontend_events_disable_success);
+            $('#key-menue-dropdown').toggle();
+        });
+    },
+    
+    
+    /**
+     * initialize events inside messages
+     */
+    initMessages: function() {
+        var that = this;
+        
+        // cancel file invitation
+        $('body').delegate(".entry-file-cancel", "click", function(e) {
+            var messageId = $(this).parents('.entry').attr('id');
+            that.backend.cancelFileInvite(messageId);
+        });
+        
+        // download file
+        $('body').delegate(".entry-file-download", "click", function(e) {
+            var messageId = $(this).parents('.entry').attr('id');
+            var message = that.backend.getMessage(messageId);
+            
+            var fileInput = $('<input type="file"/>');
+            fileInput.attr('nwsaveas', message.path);
+            fileInput.change(function() {
+                // check file given?
+                if ($(this).val() === '')
+                    return;
+                
+                // set target
+                var target = $(this).val();
+                $(this).val('');
+                message.saved = target;
+                
+                // save file
+                that.backend.saveFile({
+                    message:  message,
+                    success:  function() {
+                                  that.backend.rerenderMessage(message);
+                              },
+                    error:    alertify.error,
+                    progress: function(progress) {
+                                  message.progress = progress;
+                                  that.backend.rerenderMessage(message);
+                              },
+                    cancel:   function() {
+                                  delete message.progress;
+                                  that.backend.rerenderMessage(message);
+                              }
+                });
+            });
+            fileInput.trigger('click');
+        });
+        
+        // cancel download process
+        $('body').delegate(".entry-file-cancel-download", "click", function(e) {
+            var messageId = $(this).parents('.entry').attr('id');
+            that.backend.cancelFileDownload(messageId);
+        });
+        
+        // open downloaded file
+        $('body').delegate(".entry-file-open", "click", function(e) {
+            var messageId = $(this).parents('.entry').attr('id');
+            that.backend.openFile(messageId);
+        });
+    },
+    
+    
+    /**
+     * initialize message menue events
+     */
+    initMessageMenue: function() {
+        var that = this;
+        
         // message menue: toggle
         $('#message-add-menue').click(function() {
             $('#message-add-menue-dropdown').toggle();
@@ -152,7 +536,8 @@ define('sum-frontend-events', Class.extend({
 
         // message menue: send file
         $('#message-add-menue-file').click(function() {
-            alertify.error('Diese Funktion ist noch nicht implementiert');
+            that.selectFile();
+            $('#message-add-menue-dropdown').hide();
         });
 
         // message menue: clear conversation
@@ -166,13 +551,13 @@ define('sum-frontend-events', Class.extend({
         $('#message-add-code-box-send').click(function() {
             // code given?
             if ($('#message-add-code-box-area').val().trim().length===0) {
-                alertify.error('bitte eine Nachricht eingeben');
+                alertify.error(lang.frontend_events_enter_message);
                 return;
             }
 
             // chat channel selected?
             if (that.frontend.currentConversation===false) {
-                alertify.error('bitte einen Chat Kanal ausw&auml;hlen');
+                alertify.error(lang.frontend_events_no_chat_channel_selected);
                 return;
             }
 
@@ -195,7 +580,15 @@ define('sum-frontend-events', Class.extend({
             $('#message-add-code-box').hide();
             $('#message-add-code-box-area').val('');
         });
-
+    },
+    
+    
+    /**
+     * initialize message input events
+     */
+    initMessageInput: function() {
+        var that = this;
+        
         // toggle emoticons
         $('#message-toggleemots').click(function() {
             var emoticonsPopup = $('#message-emoticons');
@@ -216,46 +609,33 @@ define('sum-frontend-events', Class.extend({
             $('#message-toggleemots').click();
             $('#message-input-textfield').focus();
         });
-
-        // select user
-        $('.contacts').delegate("li", "click", function() {
-            var user = $(this).find('.contacts-name').html();
-            $('.rooms li, .contacts li').removeClass('active');
-            $(this).addClass('active');
-            that.frontend.currentConversation = user;
-            that.backend.getConversation(user);
-            that.backend.updateUserlist(that.frontend.currentConversation);
-            $('#main-metadata').css('visibility', 'visible');
-        });
-
-        // select room
-        $('.rooms').delegate("li", "click", function() {
-            if ( $(this).find('.rooms-outside').length>0 ) {
-                alertify.error('Bitte erst Einladung annehmen/ablehnen');
-                return;
-            }
-            var room = $(this).find('.name').html();
-            $('.rooms li, .contacts li').removeClass('active');
-            $(this).addClass('active');
-            that.frontend.currentConversation = room;
-            that.backend.getConversation(that.frontend.currentConversation);
-            that.backend.updateUserlist(that.frontend.currentConversation);
-            $('#main-metadata').css('visibility', 'visible');
-        });
-
+        
         // send message
         $('#message-send').click(function() {
             var text = $('#message-input-textfield').val();
 
             // message given?
             if (text.trim().length===0) {
-                alertify.error('bitte eine Nachricht eingeben');
+                alertify.error(lang.frontend_events_enter_message);
                 return;
             }
 
             // chat channel selected?
             if (that.frontend.currentConversation===false) {
-                alertify.error('bitte einen Chat Kanal ausw&auml;hlen');
+                alertify.error(lang.frontend_events_no_chat_channel_selected);
+                return;
+            }
+            
+            // save in history
+            if (typeof that.history[that.frontend.currentConversation] === 'undefined')
+                that.history[that.frontend.currentConversation] = [];
+            var history = that.history[that.frontend.currentConversation];
+            history[history.length] = text;
+            
+            // command?
+            if (text.indexOf('/') === 0) {
+                that.frontendCommand.handle(text, that.frontend.currentConversation);
+                $('#message-input-textfield').val("");
                 return;
             }
 
@@ -269,10 +649,63 @@ define('sum-frontend-events', Class.extend({
         });
 
         // send message by enter
-        $('#message-input-textfield').keypress(function(e) {
+        $('#message-input-textfield').keydown(function(e) {
+            // create history entry for this conversation if not defined
+            if (typeof that.history[that.frontend.currentConversation] === 'undefined')
+                that.history[that.frontend.currentConversation] = [];
+            
+            // enter
             if(e.which == 13) {
                 $('#message-send').click();
+            
+            // down
+            } else if(e.which == 40) {
+                that.historyCursor = (that.historyCursor+1>that.history[that.frontend.currentConversation].length) ? that.historyCursor : that.historyCursor+1;
+                $('#message-input-textfield').val(that.history[that.frontend.currentConversation][that.historyCursor]);
+                
+            // up
+            } else if(e.which == 38) {
+                that.historyCursor = (that.historyCursor===0) ? 0 : that.historyCursor-1;
+                $('#message-input-textfield').val(that.history[that.frontend.currentConversation][that.historyCursor]);
+                
+            // other
+            } else {
+                that.historyCursor = that.history[that.frontend.currentConversation].length + 1;
             }
+        });
+    },
+    
+    
+    /**
+     * initialize left navigation events
+     */
+    initNavigation: function() {
+        var that = this;
+        
+        // select user
+        $('.contacts').delegate("li", "click", function() {
+            var user = $(this).find('.contacts-name').html();
+            $('.rooms li, .contacts li').removeClass('active');
+            $(this).addClass('active');
+            that.frontend.currentConversation = user;
+            that.backend.updateUserlist(that.frontend.currentConversation);
+            that.backend.getConversation(user);
+            $('#main-metadata').css('visibility', 'visible');
+        });
+
+        // select room
+        $('.rooms').delegate("li", "click", function() {
+            if ( $(this).find('.rooms-outside').length>0 ) {
+                alertify.error(lang.frontend_events_select_room_not_in);
+                return;
+            }
+            var room = $(this).find('.name').html();
+            $('.rooms li, .contacts li').removeClass('active');
+            $(this).addClass('active');
+            that.frontend.currentConversation = room;
+            that.backend.updateUserlist(that.frontend.currentConversation);
+            that.backend.getConversation(that.frontend.currentConversation);
+            $('#main-metadata').css('visibility', 'visible');
         });
 
         // rooms add: show dialog
@@ -292,19 +725,19 @@ define('sum-frontend-events', Class.extend({
 
             // room name given?
             if($.trim(room).length===0) {
-                alertify.error('Bitte einen Namen für den Raum angeben');
+                alertify.error(lang.frontend_events_add_room_no_name);
                 return;
             }
 
             // don't add room with same name
             if(that.backend.doesRoomExists(room)) {
-                alertify.error('Raum mit dem Namen existiert bereits');
+                alertify.error(lang.frontend_events_room_already_exists);
                 return;
             }
 
             // don't add room of name of a user
             if(that.backend.getUser(room)!==false) {
-                alertify.error('Es existiert bereits ein Benutzer mit diesem Namen');
+                alertify.error(lang.frontend_events_user_with_roomname_exists);
                 return;
             }
 
@@ -313,7 +746,7 @@ define('sum-frontend-events', Class.extend({
 
             // hide popup
             $('.rooms-popup.add').remove();
-            alertify.log('Raum erfolgreich erstellt');
+            alertify.log(lang.frontend_events_room_added);
         });
 
         // rooms invitation: accept
@@ -343,7 +776,7 @@ define('sum-frontend-events', Class.extend({
             that.backend.inviteUsers(room, users);
 
             $('.rooms-popup.edit').remove();
-            alertify.log('Einladungen versendet');
+            alertify.log(lang.frontend_events_invites_sent);
         });
 
         // rooms: invite user cancel
@@ -353,18 +786,13 @@ define('sum-frontend-events', Class.extend({
 
         // rooms: leave
         $('.rooms').delegate("li .rooms-leave", "click", function(e) {
-            if(confirm("Raum wirklich verlassen?") !== true)
+            if(confirm(lang.frontend_events_confirm_room_leave) !== true)
                 return;
             var room = $(this).parent().find('.name').html();
             that.backend.leaveRoom(room);
             $('.rooms li:first').click();
             e.preventDefault();
             return false;
-        });
-
-        // update version
-        $('#newversion').click(function() {
-            gui.Shell.openExternal($(this).data('url'));
         });
     },
 
@@ -374,7 +802,9 @@ define('sum-frontend-events', Class.extend({
      */
     selectAvatar: function() {
         var that = this;
-        $('#fileDialog').change(function() {
+        var fileInput = $('<input type="file" />');
+        fileInput.attr('accept', '.jpg,.jpeg,.png,.gif');
+        fileInput.change(function() {
             // check file given?
             if ($(this).val() === '')
                 return;
@@ -386,13 +816,14 @@ define('sum-frontend-events', Class.extend({
             // load file
             var file = $(this).val();
             $(this).val('');
-            that.backendHelpers.readFile(
+            that.backend.getFile(
                 file,
                 function(data) {
                     // check filetype
                     var filetype = file.split('.').pop();
+                    filetype = typeof filetype === 'string' ? filetype.toLowerCase() : '';
                     if (filetype != "png" && filetype != "jpg" && filetype != "gif") {
-                        alertify.error("Bitte PNG, JPG oder GIF Datei w&auml;hlen");
+                        alertify.error(lang.frontend_events_filetype_error);
                         $('#main-menue-avatar-croper .cancel').click();
                         return;
                     }
@@ -417,10 +848,36 @@ define('sum-frontend-events', Class.extend({
                 alertify.error
             );
         });
-        $('#fileDialog').trigger('click');
+        fileInput.trigger('click');
     },
 
+    
+    /**
+     * select file for sending
+     */
+    selectFile: function() {
+        var that = this;
+        var fileInput = $('<input type="file" />');
+        fileInput.change(function() {
+            // check file given?
+            if ($(this).val() === '')
+                return;
 
+            // chat channel selected?
+            if (that.frontend.currentConversation===false) {
+                alertify.error(lang.frontend_events_no_chat_channel_selected);
+                return;
+            }
+            
+            // send file using backend
+            var file = $(this).val();
+            $(this).val('');
+            that.backend.sendFileInvite(file, that.frontend.currentConversation);
+        });
+        fileInput.trigger('click');
+    },
+
+    
     /**
      * show add room dialog popup
      */
@@ -433,9 +890,9 @@ define('sum-frontend-events', Class.extend({
 
         // create popup with text and buttons
         var div = $(this.frontendHelpers.createRoomsPopup(element, "add"));
-        div.append('<input type="text" class="name selectize-input" placeholder="Name des Raums">');
+        div.append('<input type="text" class="name selectize-input" placeholder="' + lang.frontend_events_add_room_placeholder + '">');
         div.append(select);
-        div.append('<input class="save" type="button" value="speichern" /> <input class="cancel" type="button" value="abbrechen" />');
+        div.append('<input class="save" type="button" value="' + lang.frontend_events_add_room_save + '" /> <input class="cancel" type="button" value="' + lang.frontend_events_add_room_cancel + '" />');
 
         // make user select selectize.js
         $(select).selectize({plugins: ['remove_button']});
@@ -453,10 +910,10 @@ define('sum-frontend-events', Class.extend({
 
         // create popup with text and buttons
         var div = $(this.frontendHelpers.createRoomsPopup($('#rooms-add'), "edit"));
-        div.append('<p>Weitere Mitglieder in Gruppe einladen:</p>');
+        div.append('<p>' + lang.frontend_events_invite + '</p>');
         div.append('<input class="name" type="hidden" value="' + room.escape() + '" />');
         div.append(select);
-        div.append('<input class="save" type="button" value="einladen" /> <input class="cancel" type="button" value="abbrechen" />');
+        div.append('<input class="save" type="button" value="' + lang.frontend_events_invite_save + '" /> <input class="cancel" type="button" value="' + lang.frontend_events_invite_cancel + '" />');
 
         // make user select selectize.js
         $(select).selectize({plugins: ['remove_button']});
@@ -468,11 +925,11 @@ define('sum-frontend-events', Class.extend({
      */
     createSelectForAllOnlineUsers: function() {
         // get all online users from backend
-        var users = this.backend.backendHelpers.getUsersByStatus(this.backend.getAllUsers(true), 'online');
+        var users = this.backend.getAllOnlineUsers();
 
         // create select with all online users
         var select = document.createElement("select");
-        select.setAttribute('placeholder', 'Mitglieder...');
+        select.setAttribute('placeholder', lang.frontend_events_invite_user_placeholder);
         select.setAttribute('multiple', 'multiple');
         for (var i=0; i<users.length; i++) {
             var option = document.createElement("option");
@@ -512,8 +969,8 @@ define('sum-frontend-events', Class.extend({
         $('#content-wrapper').height(windowHeight - headerHeight - messageHeight - padding);
 
         // set new position for rooms popups
-        var diff = windowHeight - this.frontend.lastWindowHeight;
-        this.frontend.lastWindowHeight = windowHeight;
+        var diff = windowHeight - this.lastWindowHeight;
+        this.lastWindowHeight = windowHeight;
         $('.rooms-popup').each(function(index, item) {
             $(item).css('top', parseInt($(item).css('top')) + diff);
         });
