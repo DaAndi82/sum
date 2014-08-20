@@ -50,7 +50,6 @@ define('sum-backend-userlist-web', Class.extend({
     userlistUpdateUsersOwnFile: function(ip, port, key, avatar, version, success) {
         var that = this;
         var request = require('request');
-        var sign = this.backendCrypto.sign(key, ip + port);
 
         // encrypt detail information
         var details = JSON.stringify({
@@ -58,10 +57,9 @@ define('sum-backend-userlist-web', Class.extend({
             port: port,
             key: key.getPublicPEM(),
             avatar: avatar,
-            version: version,
-            signature: sign
+            version: version
         });
-        var detail = this.backendCrypto.aesencrypt(details, config.web_aes_key);
+        var detail = this.backendCrypto.aesencrypt(details, config.aes_key);
         
         // send detail information
         request.post(config.web_url, { 
@@ -122,7 +120,7 @@ define('sum-backend-userlist-web', Class.extend({
         var users = [];
         $.each(encryptedUsers, function(index, encryptedUser) {
             if ($.trim(encryptedUser).length>0) {
-                users[users.length] = JSON.parse(that.backendCrypto.aesdecrypt(encryptedUser, config.web_aes_key));
+                users[users.length] = JSON.parse(that.backendCrypto.aesdecrypt(encryptedUser, config.aes_key));
             }
         });
         
@@ -262,7 +260,9 @@ define('sum-backend-userlist-web', Class.extend({
         // check public key
         for (var i = 0; i < users.length; i++) {
             var key = this.backend.getPublicKey(users[i].username);
-            if (key !== false && users[i].key !== key)
+            if (key !== false && users[i].key === key)
+                users[i].invalidkey = false;
+            else if (key !== false)
                 users[i].invalidkey = true;
         }
         return users;
@@ -285,7 +285,7 @@ define('sum-backend-userlist-web', Class.extend({
                     return;
                 }
                 try {
-                    var decrypt = JSON.parse(that.backendCrypto.aesdecrypt(body, config.web_aes_key));
+                    var decrypt = JSON.parse(that.backendCrypto.aesdecrypt(body, config.aes_key));
                     success(decrypt);
                 } catch(e) {
                     error();
@@ -303,7 +303,7 @@ define('sum-backend-userlist-web', Class.extend({
         var that = this;
         
         // encrypt user information
-        var encrypted = this.backendCrypto.aesencrypt(JSON.stringify(user), config.web_aes_key);
+        var encrypted = this.backendCrypto.aesencrypt(JSON.stringify(user), config.aes_key);
         
         request.post(config.web_url, { 
             form: { 

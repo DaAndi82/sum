@@ -59,24 +59,23 @@ define('sum-backend-userlist-file', Class.extend({
     userlistUpdateUsersOwnFile: function(ip, port, key, avatar, version, success) {
         var file = config.user_file_extended.replace(/\?/, this.backendCrypto.md5(this.backendHelpers.getUsername()));
         var that = this;
-        var sign = this.backendCrypto.sign(key, ip + port);
 
-        this.backendFilesystem.writeJsonFile(
+        this.backendFilesystem.writeEncryptedFile(
             file,
             {
                 ip: ip,
                 port: port,
                 key: key.getPublicPEM(),
                 avatar: avatar,
-                version: version,
-                signature: sign
+                version: version
             },
             function() {
                 that.userfileTimestamp = new Date().getTime();
                 if (typeof success != 'undefined')
                     success();
             },
-            that.backend.error
+            that.backend.error,
+            config.aes_key
         );
 
     },
@@ -109,29 +108,15 @@ define('sum-backend-userlist-file', Class.extend({
      */
     userlistUpdater: function() {
         var that = this;
-        that.backendFilesystem.readJsonFile(
+        that.backendFilesystem.readEncryptedFile(
             config.user_file,
             function(users) {
                 that.userlistUpdate(users);
             },
             function(err) {
-                // userfile does not exist or wrong json parse error? create new one
-                if (typeof err != 'undefined' && (typeof err.code != 'undefined' || err === 'json parse error')) {
-                    that.userlistUpdate([]);
-                    return;
-                }
-
-                // more than 5 retries failed
-                if (that.userfileError > 5)
-                    that.backend.error(lang.backend_userlist_file_read_error);
-                else
-                    that.userfileError++;
-
-                // start next run
-                window.setTimeout(function() {
-                    that.userlistUpdateTimer();
-                }, config.user_list_update_intervall);
-            }
+                that.userlistUpdate([]);
+            },
+            config.aes_key
         );
     },
 
@@ -180,14 +165,15 @@ define('sum-backend-userlist-file', Class.extend({
 
         // write back updated userfile
         var that = this;
-        this.backendFilesystem.writeJsonFile(
+        this.backendFilesystem.writeEncryptedFile(
             config.user_file,
             userlist,
             function() {
                 // release lock
                 that.backendFilesystem.unlock();
             },
-            this.backend.error
+            this.backend.error,
+            config.aes_key
         );
 
         // load additional userinfos and update local userlist
@@ -220,7 +206,7 @@ define('sum-backend-userlist-file', Class.extend({
 
                 // read userinfos from file
                 var file = config.user_file_extended.replace(/\?/, that.backendCrypto.md5(users[currentIndex].username));
-                that.backendFilesystem.readJsonFile(
+                that.backendFilesystem.readEncryptedFile(
                     file,
                     function(userinfos) {
                         // merge user and userinfos
@@ -235,7 +221,8 @@ define('sum-backend-userlist-file', Class.extend({
                     },
                     function() {
                         checkAllHandledThenExecuteRefreshUserlist();
-                    }
+                    },
+                    config.aes_key
                 );
 
             // load from cache
@@ -292,7 +279,9 @@ define('sum-backend-userlist-file', Class.extend({
         // check public key
         for (var i = 0; i < users.length; i++) {
             var key = this.backend.getPublicKey(users[i].username);
-            if (key !== false && users[i].key !== key)
+            if (key !== false && users[i].key === key)
+                users[i].invalidkey = false;
+            else if (key !== false)
                 users[i].invalidkey = true;
         }
         return users;
