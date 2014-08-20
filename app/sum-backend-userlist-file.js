@@ -209,13 +209,7 @@ define('sum-backend-userlist-file', Class.extend({
         var checkAllHandledThenExecuteRefreshUserlist = function() {
             toMerge--;
             if(toMerge===0)
-                if (that.userlistsHasChanges(that.backend.userlist, users)) {
-                    that.userlistRefreshFrontend(users);
-                } else {
-                    window.setTimeout(function() {
-                        that.userlistUpdateTimer();
-                    }, config.user_list_update_intervall);
-                }
+                that.userlistRefreshFrontend(users);
         };
 
         // loads current userinfos for a single user
@@ -289,51 +283,6 @@ define('sum-backend-userlist-file', Class.extend({
     },
 
 
-
-    userlistsHasChanges: function (oldUserlist, newUserlist) {
-
-        // different userlist.length -> change
-        if (oldUserlist.length != newUserlist.length)
-            return true;
-
-        var hasChanges = false;
-
-        $.each(newUserlist, function (userIndex, newUser) {
-            if ($.grep(oldUserlist, function (oldUser) {
-                if (oldUser.username != newUser.username)
-                    return false;
-                if (oldUser.status != newUser.status)
-                    return false;
-                if (oldUser.rooms.length != newUser.rooms.length)
-                    return false;
-
-                var sameRoomList = true;
-
-                $.each(newUser.rooms, function (roomIndex, newRoom) {
-                    if ($.grep(oldUser.rooms, function (oldRoom) {
-                        var sameRoom = false;
-
-                        if (oldRoom.name == newRoom.name)
-                            sameRoom = true;
-
-                        return sameRoom;
-                    }).length == 0){
-                        sameRoomList = false;
-                        return false;
-                    }
-                })
-
-                return sameRoomList;
-            }).length == 0) {
-                hasChanges = true;
-                return false;
-            }
-        });
-
-        return hasChanges;
-    },
-    
-
     /**
      * check public keys
      * @return (array) users with invalidkey value on wrong public key
@@ -380,7 +329,6 @@ define('sum-backend-userlist-file', Class.extend({
         });
 
         return users;
-
     }
 
 }));
