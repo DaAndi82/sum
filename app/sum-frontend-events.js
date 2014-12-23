@@ -686,11 +686,12 @@ define('sum-frontend-events', Class.extend({
         $('.contacts').delegate("li", "click", function() {
             var user = $(this).find('.contacts-name').html();
             $('.rooms li, .contacts li').removeClass('active');
-            $(this).addClass('active');
             that.frontend.currentConversation = user;
+            delete that.frontend.unreadMessagesCounter[that.frontend.currentConversation];
             that.backend.updateUserlist(that.frontend.currentConversation);
             that.backend.getConversation(user);
             $('#main-metadata').css('visibility', 'visible');
+            $('#message-input-textfield').focus();
         });
 
         // select room
@@ -701,11 +702,13 @@ define('sum-frontend-events', Class.extend({
             }
             var room = $(this).find('.name').html();
             $('.rooms li, .contacts li').removeClass('active');
-            $(this).addClass('active');
             that.frontend.currentConversation = room;
+            delete that.frontend.unreadMessagesCounter[that.frontend.currentConversation];
+            that.backend.updateRoomlist();
             that.backend.updateUserlist(that.frontend.currentConversation);
             that.backend.getConversation(that.frontend.currentConversation);
             $('#main-metadata').css('visibility', 'visible');
+            $('#message-input-textfield').focus();
         });
 
         // rooms add: show dialog

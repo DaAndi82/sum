@@ -116,6 +116,11 @@ define('sum-backend', Class.extend({
      */
     enableNotifications: true,
 
+    
+    /**
+     * indicates whether the window has currently the focus
+     */
+    focus: true,
 
     
     
@@ -194,6 +199,17 @@ define('sum-backend', Class.extend({
         tray.on('click', function() {
             gui.Window.get().show();
             gui.Window.get().focus();
+        });
+        
+        var that = this;
+        window.addEventListener('blur', function(e) {
+            that.focus = false;
+        });
+        
+        window.addEventListener('focus', function(e) {
+            that.focus = true;
+            if (typeof that.focusCallback !== 'undefined')
+                that.focusCallback();
         });
     },
     
@@ -294,6 +310,13 @@ define('sum-backend', Class.extend({
     onRerenderMessage: function(callback) {
         this.rerenderMessage = callback;
     },
+    
+    /**
+     * register callback for window gets focus
+     */
+    onFocus: function(callback) {
+        this.focusCallback = callback;
+    },
 
 
     
@@ -322,14 +345,16 @@ define('sum-backend', Class.extend({
             title = title.length > 55 ? title.substring(0, 55) + '...' : title;
             text = text.length > 240 ? text.substring(0, 240) + '...' : text;
             
-            var notification = new Notification(title, { body: text, icon: image });
-            notification.onclick = function() {
+            if (image.indexOf('data:') === -1)
+                image = '../../' + image;
+            
+            window.LOCAL_NW.desktopNotifications.notify(image, title, text, function() {
                 gui.Window.get().show();
                 gui.Window.get().focus();
-                if (typeof conversation !== 'undefined') {
+                if (typeof conversation != 'undefined') {
                     that.switchConversation(conversation);
                 }
-            };
+            });
         }
     },
     
@@ -1134,6 +1159,15 @@ define('sum-backend', Class.extend({
         } catch(e) {
             // do nothing if no setBadgeLabel is on this system available
         }
+    },
+    
+    
+    /**
+     * returns whether main window has focus or not.
+     * @return (boolean) true if focues, false otherwise
+     */
+    isFocused: function() {
+        return this.focus;
     },
     
     
